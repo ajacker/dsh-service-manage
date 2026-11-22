@@ -48,7 +48,11 @@ browser ── DSH Web GUI ──► /service-manage (API)
 Each service row has a selector (manual / login launcher / Windows service) and
 the settings page has the same selector for Caddy. Switching stops the current
 process, hands the entry to the other mechanism, and regenerates the login
-script, so the two never start the same thing twice.
+script, so the two never start the same thing twice. The panel covers itself
+with a busy veil while such a switch runs (after 200 ms, so quick actions do not
+flash), which disables the selectors and drops repeat clicks instead of letting
+a second switch race the first. The settings page also opens the data directory,
+the plugin directory, or the Caddyfile's folder in Explorer.
 
 > Windows rejects `cmd.exe /c something.cmd` as a service binary — the process
 > never talks to the SCM, so start fails with error 1053. The bundled host does

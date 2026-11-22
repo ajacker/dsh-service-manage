@@ -14,6 +14,11 @@ import { Supervisor } from './lib/services.js'
 import { Store, resolveDataDir } from './lib/store.js'
 import { createApiHandler } from './lib/api.js'
 import { registerTools } from './lib/tools.js'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/** Directory this plugin is installed in, revealed by the panel's button. */
+const PLUGIN_DIR = dirname(fileURLToPath(import.meta.url))
 
 /** Service dependencies this plugin needs. */
 export const inject = ['tools', 'webServer', 'systemPrompt']
@@ -48,7 +53,7 @@ export async function apply(ctx, config = {}) {
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: '/service-manage',
-    handler: createApiHandler({ store, supervisor, caddy }),
+    handler: createApiHandler({ store, supervisor, caddy, pluginDir: PLUGIN_DIR }),
   }), 'service-manage: api route')
 
   registerTools(ctx, { store, supervisor, caddy })

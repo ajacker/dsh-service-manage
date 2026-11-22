@@ -415,9 +415,11 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('')
       const [toast, setToast] = useState('')
       const [busy, setBusy] = useState(false)
+      const [lockText, setLockText] = useState('')
       const [editor, setEditor] = useState(null)
       const [logsFor, setLogsFor] = useState(null)
       const busyRef = useRef(false)
+      const actingRef = useRef(false)
 
       const notify = useCallback(message => {
         setToast(message)
@@ -425,7 +427,7 @@ window.__ModuleLoader__.load({
       }, [])
 
       const refresh = useCallback(async (silent) => {
-        if (busyRef.current) return
+        if (busyRef.current || actingRef.current) return
         busyRef.current = true
         try {
           const next = await call('/state')
@@ -445,6 +447,8 @@ window.__ModuleLoader__.load({
       }, [refresh])
 
       const act = useCallback(async (path, body, successText) => {
+        if (actingRef.current) return undefined
+        actingRef.current = true
         setBusy(true)
         setError('')
         try {
@@ -456,24 +460,59 @@ window.__ModuleLoader__.load({
           setError(String(err.message ?? err))
           return undefined
         } finally {
+          actingRef.current = false
           setBusy(false)
         }
       }, [notify])
 
+      /**
+       * Run a multi-step change behind the modal veil, so a second click cannot
+       * start a competing switch while the first one waits on UAC.
+       * @param {string} text - what the veil says.
+       * @param {() => Promise<any>} work - steps to run.
+       * @returns {Promise<any>} whatever the steps return.
+       */
+      const runLocked = useCallback(async (text, work) => {
+        setLockText(text)
+        try {
+          return await work()
+        } finally {
+          setLockText('')
+        }
+      }, [])
+
       const setBoot = useCallback(async (service, mode) => {
-        if (mode === 'manual') {
-          if (service.windowsService?.exists) await act('/service/boot-mode', { id: service.id, mode: 'script' })
-          await act('/service/save', { service: { id: service.id, autoStart: 'none' } }, '已改为手动启动')
-          return
+        const label = mode === 'service'
+          ? `正在把「${service.name}」注册为 Windows 服务，若弹出 UAC 请点“是”…`
+          : `正在把「${service.name}」改为登录脚本自启…`
+        await runLocked(label, async () => {
+          if (mode === 'manual') {
+            if (service.windowsService?.exists) await act('/service/boot-mode', { id: service.id, mode: 'script' })
+            await act('/service/save', { service: { id: service.id, autoStart: 'none' } }, '已改为手动启动')
+            return
+          }
+          await act('/service/save', { service: { id: service.id, autoStart: 'boot' } })
+          const data = await act('/service/boot-mode', { id: service.id, mode })
+          if (data?.result?.ok === false) {
+            setError(`${data.result.output}\n\n以管理员身份执行：\n${data.result.plan?.command ?? ''}`)
+            return
+          }
+          notify(mode === 'service' ? `已注册为 Windows 服务：${service.name}` : `已改为登录脚本自启：${service.name}`)
+        })
+      }, [act, notify, runLocked])
+
+      const locked = busy || lockText !== ''
+      const [veil, setVeil] = useState(false)
+      useEffect(() => {
+        if (!locked) {
+          setVeil(false)
+          return undefined
         }
-        await act('/service/save', { service: { id: service.id, autoStart: 'boot' } })
-        const data = await act('/service/boot-mode', { id: service.id, mode })
-        if (data?.result?.ok === false) {
-          setError(`${data.result.output}\n\n以管理员身份执行：\n${data.result.plan?.command ?? ''}`)
-          return
-        }
-        notify(mode === 'service' ? `已注册为 Windows 服务：${service.name}` : `已改为登录脚本自启：${service.name}`)
-      }, [act, notify])
+        // Only cover the panel once the work outlives a click; a 300 ms reload
+        // must not flash a full-screen veil.
+        const timer = window.setTimeout(() => setVeil(true), 200)
+        return () => window.clearTimeout(timer)
+      }, [locked])
 
       if (!state) {
         return h('div', { className: 'sm-root' },
@@ -527,6 +566,13 @@ window.__ModuleLoader__.load({
           tab === 'advanced' ? renderAdvanced() : null,
           tab === 'settings' ? renderSettings() : null,
         ),
+        veil ? h('div', { className: 'sm-veil', role: 'status', 'aria-live': 'polite' },
+          h('div', { className: 'sm-veil-card' },
+            h('span', { className: 'sm-spinner' }),
+            h('div', { className: 'sm-veil-text' }, lockText || (busy ? '正在执行…' : '正在等待结果…')),
+            h('div', { className: 'sm-veil-hint' }, '完成后自动关闭，请勿重复操作'),
+          ),
+        ) : null,
         toast ? h('div', { className: 'sm-toast' }, toast) : null,
         editor ? (editor.type === 'service'
           ? h(ServiceEditor, {
@@ -642,6 +688,7 @@ window.__ModuleLoader__.load({
                           className: 'sm-input sm-mode',
                           title: '开机自启方式',
                           value: bootOf(service),
+                          disabled: busy,
                           onChange: event => { void setBoot(service, event.target.value) },
                         },
                           h('option', { value: 'manual' }, '手动'),
@@ -731,7 +778,7 @@ window.__ModuleLoader__.load({
 
       /* ── 设置 ── */
       function renderSettings() {
-        return h(SettingsTab, { state, act, notify, refresh })
+        return h(SettingsTab, { state, act, notify, refresh, runLocked })
       }
     }
 
@@ -841,7 +888,7 @@ window.__ModuleLoader__.load({
 
     /* ───────────────────────── 设置页 ───────────────────────── */
 
-    function SettingsTab({ state, act, notify, refresh }) {
+    function SettingsTab({ state, act, notify, refresh, runLocked }) {
       const [draft, setDraft] = useState({
         proxyListen: state.settings.proxyListen,
         adminEndpoint: state.settings.adminEndpoint,
@@ -851,6 +898,8 @@ window.__ModuleLoader__.load({
         trustProxyHeaders: state.settings.trustProxyHeaders !== false,
       })
       const [busy, setBusy] = useState(false)
+      const [switching, setSwitching] = useState(false)
+      const openDir = target => act('/open', { target }, '已在资源管理器中打开')
       const save = async () => {
         setBusy(true)
         try {
@@ -865,7 +914,13 @@ window.__ModuleLoader__.load({
           h('div', { className: 'sm-card-title' }, '数据目录'),
           h('div', { className: 'sm-kv' }, h('span', null, '目录'), h('code', { className: 'sm-wrap' }, state.dataDir)),
           h('div', { className: 'sm-kv' }, h('span', null, 'Caddyfile'), h('code', { className: 'sm-wrap' }, state.caddyfile)),
-          h('p', { className: 'sm-muted' }, '数据目录来自插件配置 dataDir（默认 <DSH_HOME>/service-manage）。服务和路由的登记、日志、生成的 Caddyfile 都在这里。'),
+          h('div', { className: 'sm-kv' }, h('span', null, '插件目录'), h('code', { className: 'sm-wrap' }, state.pluginDir ?? '（未知）')),
+          h('div', { className: 'sm-row-actions' },
+            h(Btn, { onClick: () => openDir('data') }, '打开数据目录'),
+            h(Btn, { onClick: () => openDir('plugin') }, '打开插件目录'),
+            h(Btn, { onClick: () => openDir('caddy') }, '打开 Caddyfile 所在目录'),
+          ),
+          h('p', { className: 'sm-muted' }, '数据目录来自插件配置 dataDir（默认 <DSH_HOME>/service-manage）。服务和路由的登记、日志、生成的 Caddyfile 都在这里；插件目录是安装位置，改代码后要在 DSH 里重载插件才会生效。'),
         ),
         h('div', { className: 'sm-card' },
           h('div', { className: 'sm-card-title' }, '代理设置'),
@@ -889,12 +944,23 @@ window.__ModuleLoader__.load({
             h('select', {
               className: 'sm-input sm-mode',
               value: state.caddy.windowsService?.exists ? 'service' : 'script',
+              disabled: switching,
               onChange: async event => {
-                const data = await act('/caddy/boot-mode', { mode: event.target.value })
-                if (data?.result?.ok === false) {
-                  notify(`需要管理员权限：${data.result.plan?.command ?? data.result.output}`)
-                } else {
-                  notify(event.target.value === 'service' ? 'Caddy 已改为 Windows 服务' : 'Caddy 已改为登录脚本自启')
+                const mode = event.target.value
+                if (mode === (state.caddy.windowsService?.exists ? 'service' : 'script')) return
+                setSwitching(true)
+                try {
+                  const data = await runLocked(
+                    mode === 'service' ? '正在把 Caddy 注册为 Windows 服务，若弹出 UAC 请点“是”…' : '正在把 Caddy 改为登录脚本自启…',
+                    () => act('/caddy/boot-mode', { mode }),
+                  )
+                  if (data?.result?.ok === false) {
+                    notify(`需要管理员权限：${data.result.plan?.command ?? data.result.output}`)
+                  } else if (data) {
+                    notify(mode === 'service' ? 'Caddy 已改为 Windows 服务' : 'Caddy 已改为登录脚本自启')
+                  }
+                } finally {
+                  setSwitching(false)
                 }
               },
             },
@@ -922,7 +988,7 @@ window.__ModuleLoader__.load({
     /* ───────────────────────── 样式 ───────────────────────── */
 
     const CSS = `
-.sm-root{height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5;overflow:hidden}
+.sm-root{position:relative;height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.5;overflow:hidden}
 .sm-head{border-bottom:1px solid var(--dsw-alias-border-l1);padding:12px 18px 0;flex:none}
 .sm-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sm-title{font-size:15px}
@@ -994,6 +1060,12 @@ window.__ModuleLoader__.load({
 .sm-log{margin:0;background:#0d1418;color:#cfe8df;border-radius:8px;padding:10px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;line-height:1.45;max-height:52vh;overflow:auto;white-space:pre-wrap;word-break:break-all}
 .sm-log-sm{max-height:200px}
 .sm-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:6px 16px;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:70}
+.sm-veil{position:absolute;inset:0;z-index:55;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--dsw-alias-bg-base) 72%,transparent);backdrop-filter:blur(1.5px);cursor:progress}
+.sm-veil-card{display:flex;flex-direction:column;align-items:center;gap:8px;max-width:380px;padding:20px 26px;border-radius:12px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);box-shadow:0 12px 32px rgba(0,0,0,.28);text-align:center}
+.sm-veil-text{font-size:13px}
+.sm-veil-hint{font-size:11px;color:var(--dsw-alias-label-secondary)}
+.sm-spinner{width:18px;height:18px;border-radius:50%;border:2px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-label-primary);animation:sm-spin .8s linear infinite}
+@keyframes sm-spin{to{transform:rotate(360deg)}}
 `
 
     /* ───────────────────────── 侧栏图标 ───────────────────────── */

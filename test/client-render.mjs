@@ -85,6 +85,7 @@ assert.ok(typeof sidebar.component === 'function')
 
 const fixture = {
   dataDir: 'C:\\Users\\me\\.dsh\\service-manage',
+  pluginDir: 'C:\\Users\\me\\.dsh\\plugins\\dsh-service-manage',
   caddyfile: 'C:\\Users\\me\\.dsh\\service-manage\\caddy\\Caddyfile',
   mode: 'managed',
   settings: {
@@ -133,7 +134,7 @@ const expectations = {
   services: ['停止', '重启', 'Windows 服务', 'ComfyUI', '8090'],
   routes: ['/image', '127.0.0.1:8090', 'Basic', '新增路由'],
   advanced: ['Caddyfile', '自定义片段', '切换为手动模式'],
-  settings: ['数据目录', 'Caddy 自启方式', '开机自启', '监听地址'],
+  settings: ['数据目录', '打开数据目录', '打开插件目录', 'Caddy 自启方式', '开机自启', '监听地址'],
 }
 
 for (const [tab, needles] of Object.entries(expectations)) {
