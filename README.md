@@ -24,13 +24,36 @@ browser ── DSH Web GUI ──► /service-manage (API)
 - **Validation first**: every route change re-renders the Caddyfile, runs
   `caddy validate`, then reloads. A failed validation restores the previous
   files, so a typo cannot take the proxy down.
-- **Startup modes**: manual, start with DSH, or start at user login
-  (`HKCU\…\Run` + a generated hidden launcher).
-- **Windows service**: generates a ready-to-run elevated install script
-  (and runs it when you are already elevated).
+- **Startup modes**: manual, start with DSH, the hidden login launcher, or a real
+  Windows service. The last two are switchable per entry — services and Caddy
+  alike — from the panel.
+- **Windows service**: the install compiles a small bundled service host
+  (`assets/ServiceHost.cs`) with the `csc.exe` that ships with Windows, so no
+  third-party binary is added. A UAC prompt appears once; afterwards the entry
+  lives in `services.msc` and starts at boot without a login.
 - **Agent-friendly**: five tools — `service_status`, `service_control`,
   `service_config`, `proxy_route`, `caddy_config` — cover the same operations,
   so asking the agent to "put /docs on 8091 with a password" works.
+
+## Two autostart mechanisms
+
+| | Login launcher | Windows service |
+|---|---|---|
+| Starts | after the user logs in | at boot, no login needed |
+| Needs admin | no | yes (the panel raises UAC) |
+| Where | `HKCU\…\Run\DSHServiceManage` → `autostart\start-all.vbs` | `services.msc`: `DSH-ServiceManage-caddy`, `DSH-ServiceManage-<id>` |
+| Runs as | the signed-in user | LocalSystem |
+| Started by | generated `start-all.cmd` | bundled `ServiceHost.exe` |
+
+Each service row has a selector (manual / login launcher / Windows service) and
+the settings page has the same selector for Caddy. Switching stops the current
+process, hands the entry to the other mechanism, and regenerates the login
+script, so the two never start the same thing twice.
+
+> Windows rejects `cmd.exe /c something.cmd` as a service binary — the process
+> never talks to the SCM, so start fails with error 1053. The bundled host does
+> the SCM handshake, runs the launcher, appends output to
+> `launcher.service.log`, and kills the child tree on stop.
 
 ## Install
 
@@ -104,7 +127,8 @@ service_status  {}
   caddy/custom/<id>.caddy     hand-written snippets
   logs/<service>.log          process output
   autostart/                  login launcher (start-all.cmd/.vbs, services/*.cmd)
-  windows-service/<id>/       generated install/uninstall scripts
+  windows-service/ServiceHost.exe  compiled service host (built on first use)
+  windows-service/<id>/       launcher + install/uninstall + service log
 ```
 
 ## Development

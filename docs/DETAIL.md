@@ -15,6 +15,22 @@
 - **高级**：整份 Caddyfile 编辑、校验、切回托管模式、自定义片段（`custom/*.caddy`）。
 - **设置**：监听地址、Caddy 管理接口、可执行文件、随 DSH 启动、开机自启开关。
 
+## 自启方式（两种，可切换）
+
+| | 登录脚本 | Windows 服务 |
+|---|---|---|
+| 触发 | 用户登录后 | 开机即启，无需登录 |
+| 权限 | 不需要管理员 | 需要管理员，面板会弹 UAC |
+| 位置 | `HKCU\…\Run\DSHServiceManage` → `autostart\start-all.vbs` | `services.msc`：`DSH-ServiceManage-caddy`、`DSH-ServiceManage-<id>` |
+| 运行身份 | 当前用户 | LocalSystem |
+
+服务行上的下拉框和设置页的「Caddy 自启方式」都能切换。切换会先停掉当前进程，
+再由另一种方式接管，并重新生成登录脚本，两个机制不会同时启动同一个条目。
+
+> Windows 不允许 `cmd.exe /c xxx.cmd` 当服务（SCM 握手超时，1053）。插件自带
+> `assets/ServiceHost.cs`，注册时用系统自带的 csc 编译成 `ServiceHost.exe`：
+> 完成 SCM 握手、拉起 launcher、输出写 `launcher.service.log`、停止时 `taskkill /T`。
+
 ## 服务定义
 
 | 字段 | 说明 |

@@ -93,19 +93,20 @@ const fixture = {
     caddyExe: 'caddy',
     caddyfile: '',
     autoStartCaddy: true,
+    caddyBootMode: 'script',
     trustProxyHeaders: true,
   },
-  caddy: { running: true, reachable: true, admin: 'localhost:2019', listens: [':8080'], port: 8080, pid: 1234 },
+  caddy: { running: true, reachable: true, admin: 'localhost:2019', listens: [':8080'], port: 8080, pid: 1234, windowsService: { exists: false, status: 'missing' } },
   services: [
     {
       id: 'image-api', name: '生图 API', description: 'ComfyUI 生图接口', cwd: 'D:\\services\\image-api',
       command: '"F:\\Miniconda3\\python.exe" main.py', env: { PORT: '8090' }, port: 8090, healthPath: '/health',
       autoStart: 'boot', manage: 'process', running: true, owned: true, pid: 4321, uptimeMs: 3_600_000,
-      health: { ok: true, status: 200 }, lastExit: undefined,
+      health: { ok: true, status: 200 }, lastExit: undefined, windowsService: { exists: false, status: 'missing' },
     },
     {
       id: 'comfyui', name: 'ComfyUI', description: '', cwd: '', command: '', env: {}, port: 9199, healthPath: '',
-      autoStart: 'none', manage: 'external', running: true, owned: false, pid: 2224, health: undefined,
+      autoStart: 'none', manage: 'external', running: true, owned: false, pid: 2224, health: undefined, windowsService: { exists: false, status: 'missing' },
     },
   ],
   routes: [
@@ -132,7 +133,7 @@ const expectations = {
   services: ['停止', '重启', 'Windows 服务', 'ComfyUI', '8090'],
   routes: ['/image', '127.0.0.1:8090', 'Basic', '新增路由'],
   advanced: ['Caddyfile', '自定义片段', '切换为手动模式'],
-  settings: ['数据目录', '开机自启', '监听地址'],
+  settings: ['数据目录', 'Caddy 自启方式', '开机自启', '监听地址'],
 }
 
 for (const [tab, needles] of Object.entries(expectations)) {

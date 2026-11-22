@@ -92,6 +92,23 @@ window.__ModuleLoader__.load({
       return value === 'boot' ? '开机自启' : value === 'dsh' ? '随 DSH' : '手动'
     }
 
+    /**
+     * How one service starts today: an installed Windows service wins over the
+     * login launcher, which in turn only covers autoStart "boot".
+     * @param {Record<string, any>} service - snapshot row.
+     * @returns {'service' | 'script' | 'manual'} the effective mechanism.
+     */
+    function bootOf(service) {
+      if (service.windowsService?.exists) return 'service'
+      if (service.autoStart === 'boot') return 'script'
+      return 'manual'
+    }
+
+    function bootLabel(service) {
+      const mode = bootOf(service)
+      return mode === 'service' ? 'Windows 服务' : mode === 'script' ? '登录自启' : autoLabel(service.autoStart)
+    }
+
     async function runSeries(items, fn) {
       const results = []
       for (const item of items) results.push(await fn(item))
@@ -390,50 +407,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /* ───────────────────────── Windows 服务弹窗 ───────────────────────── */
-
-    function WindowsServiceModal({ service, onClose, notify }) {
-      const [result, setResult] = useState(null)
-      const [busy, setBusy] = useState(false)
-      const [error, setError] = useState('')
-      const install = async () => {
-        setBusy(true)
-        setError('')
-        try {
-          const data = await call('/windows-service', { id: service.id, action: 'install' })
-          setResult(data.result)
-          if (data.result.ok) notify('Windows 服务已注册')
-        } catch (err) {
-          setError(String(err.message ?? err))
-        } finally {
-          setBusy(false)
-        }
-      }
-      return h(Modal, {
-        title: `注册为 Windows 服务 · ${service.name}`,
-        onClose,
-        wide: true,
-        footer: h(React.Fragment, null,
-          h(Btn, { onClick: onClose }, '关闭'),
-          h(Btn, { kind: 'primary', onClick: install, disabled: busy }, busy ? '处理中…' : '尝试注册'),
-        ),
-      },
-        h('p', { className: 'sm-muted' },
-          'Windows 服务由系统在开机时启动，不依赖登录会话，但注册需要管理员权限。没有管理员权限时会生成一份安装脚本，右键“以管理员身份运行”即可。'),
-        error ? h('div', { className: 'sm-error' }, error) : null,
-        result ? h('div', { className: 'sm-stack' },
-          h('div', { className: result.ok ? 'sm-ok' : 'sm-warn' },
-            result.ok ? '注册成功。' : result.requiresElevation ? '需要管理员权限。' : '注册失败。'),
-          result.output ? h('pre', { className: 'sm-log sm-log-sm' }, result.output) : null,
-          result.plan ? h('div', { className: 'sm-stack' },
-            h('div', { className: 'sm-kv' }, h('span', null, '服务名'), h('code', null, result.plan.name)),
-            h('div', { className: 'sm-kv' }, h('span', null, '启动命令'), h('code', { className: 'sm-wrap' }, result.plan.command)),
-            h('div', { className: 'sm-kv' }, h('span', null, '安装脚本'), h('code', { className: 'sm-wrap' }, result.plan.install)),
-          ) : null,
-        ) : null,
-      )
-    }
-
     /* ───────────────────────── 主面板 ───────────────────────── */
 
     function Panel(props = {}) {
@@ -444,7 +417,6 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false)
       const [editor, setEditor] = useState(null)
       const [logsFor, setLogsFor] = useState(null)
-      const [winFor, setWinFor] = useState(null)
       const busyRef = useRef(false)
 
       const notify = useCallback(message => {
@@ -487,6 +459,21 @@ window.__ModuleLoader__.load({
           setBusy(false)
         }
       }, [notify])
+
+      const setBoot = useCallback(async (service, mode) => {
+        if (mode === 'manual') {
+          if (service.windowsService?.exists) await act('/service/boot-mode', { id: service.id, mode: 'script' })
+          await act('/service/save', { service: { id: service.id, autoStart: 'none' } }, '已改为手动启动')
+          return
+        }
+        await act('/service/save', { service: { id: service.id, autoStart: 'boot' } })
+        const data = await act('/service/boot-mode', { id: service.id, mode })
+        if (data?.result?.ok === false) {
+          setError(`${data.result.output}\n\n以管理员身份执行：\n${data.result.plan?.command ?? ''}`)
+          return
+        }
+        notify(mode === 'service' ? `已注册为 Windows 服务：${service.name}` : `已改为登录脚本自启：${service.name}`)
+      }, [act, notify])
 
       if (!state) {
         return h('div', { className: 'sm-root' },
@@ -556,7 +543,6 @@ window.__ModuleLoader__.load({
               notify,
             })) : null,
         logsFor ? h(LogsModal, { service: logsFor, onClose: () => setLogsFor(null) }) : null,
-        winFor ? h(WindowsServiceModal, { service: winFor, onClose: () => setWinFor(null), notify }) : null,
       )
 
       /* ── 概览 ── */
@@ -646,10 +632,22 @@ window.__ModuleLoader__.load({
                     service.running && service.health
                       ? h(Pill, { tone: service.health.ok ? 'ok' : 'warn' }, service.health.ok ? `健康 ${service.health.status}` : '健康检查失败')
                       : null,
-                    h(Pill, { tone: 'plain' }, autoLabel(service.autoStart)),
+                    h(Pill, { tone: bootOf(service) === 'service' ? 'ok' : 'plain' }, bootLabel(service)),
                     service.manage === 'external' ? h(Pill, { tone: 'plain' }, '外部') : null,
                   ),
                   h('div', { className: 'sm-row-actions' },
+                    service.manage === 'external'
+                      ? null
+                      : h('select', {
+                          className: 'sm-input sm-mode',
+                          title: '开机自启方式',
+                          value: bootOf(service),
+                          onChange: event => { void setBoot(service, event.target.value) },
+                        },
+                          h('option', { value: 'manual' }, '手动'),
+                          h('option', { value: 'script' }, '登录脚本'),
+                          h('option', { value: 'service' }, 'Windows 服务'),
+                        ),
                     service.manage === 'external' || service.running
                       ? null
                       : h(Btn, { kind: 'primary', onClick: () => act('/service/action', { id: service.id, action: 'start' }, `已启动 ${service.name}`) }, '启动'),
@@ -659,7 +657,6 @@ window.__ModuleLoader__.load({
                     h(Btn, { onClick: () => act('/service/action', { id: service.id, action: 'restart' }, `已重启 ${service.name}`) }, '重启'),
                     h(Btn, { onClick: () => setLogsFor(service) }, '日志'),
                     h(Btn, { onClick: () => setEditor({ type: 'service', value: toServiceDraft(service) }) }, '编辑'),
-                    h(Btn, { onClick: () => setWinFor(service) }, 'Windows 服务'),
                     h(Btn, { kind: 'danger', onClick: () => {
                       if (!window.confirm(`删除服务 ${service.name}？进程会被停止。`)) return
                       void act('/service/delete', { id: service.id }, '已删除')
@@ -885,6 +882,30 @@ window.__ModuleLoader__.load({
           h('div', { className: 'sm-row-actions' }, h(Btn, { kind: 'primary', onClick: save, disabled: busy }, busy ? '保存中…' : '保存设置')),
         ),
         h('div', { className: 'sm-card' },
+          h('div', { className: 'sm-card-title' }, 'Caddy 自启方式'),
+          h('div', { className: 'sm-kv' }, h('span', null, '当前'),
+            h('strong', null, state.caddy.windowsService?.exists ? 'Windows 服务' : '登录脚本')),
+          h('div', { className: 'sm-row-actions' },
+            h('select', {
+              className: 'sm-input sm-mode',
+              value: state.caddy.windowsService?.exists ? 'service' : 'script',
+              onChange: async event => {
+                const data = await act('/caddy/boot-mode', { mode: event.target.value })
+                if (data?.result?.ok === false) {
+                  notify(`需要管理员权限：${data.result.plan?.command ?? data.result.output}`)
+                } else {
+                  notify(event.target.value === 'service' ? 'Caddy 已改为 Windows 服务' : 'Caddy 已改为登录脚本自启')
+                }
+              },
+            },
+              h('option', { value: 'script' }, '登录脚本'),
+              h('option', { value: 'service' }, 'Windows 服务'),
+            ),
+          ),
+          h('p', { className: 'sm-muted' },
+            '登录脚本：登录后隐藏窗口启动；Windows 服务：开机即启、不需要登录，但注册需要管理员权限。切换时会先停掉当前进程，再由另一种方式接管。'),
+        ),
+        h('div', { className: 'sm-card' },
           h('div', { className: 'sm-card-title' }, '开机自启'),
           h('div', { className: 'sm-kv' }, h('span', null, '状态'), h('strong', null, state.autostart ? '已开启' : '已关闭')),
           h('div', { className: 'sm-kv' }, h('span', null, '管理员权限'), h('strong', null, state.elevated ? '有' : '无')),
@@ -961,6 +982,7 @@ window.__ModuleLoader__.load({
 .sm-field-hint{color:var(--dsw-alias-label-secondary);font-size:11px;opacity:.8}
 .sm-input{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-primary);border-radius:7px;padding:6px 8px;font-size:12px;min-width:0;font-family:inherit}
 .sm-input:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}
+.sm-mode{width:auto;min-width:106px;padding:4px 6px}
 .sm-code{width:100%;resize:vertical;line-height:1.5}
 .sm-modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center;z-index:60;padding:24px}
 .sm-modal{background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;width:min(560px,100%);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 18px 48px rgba(0,0,0,.35)}

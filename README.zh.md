@@ -23,12 +23,32 @@
   `Caddyfile`，或写 `custom/*.caddy` 片段。
 - **先校验再生效**：改路由会重新生成 Caddyfile → `caddy validate` → 失败自动
   还原 → `caddy reload`。写错一行不会把代理改挂。
-- **启动方式**：手动 / 随机 DSH 启动 / 登录时自启（`HKCU\…\Run` + 隐藏启动脚本）。
-  DSH 重启后，标记为「登录自启」的服务会在 6 秒内自动补起。
-- **注册 Windows 服务**：生成可直接以管理员运行的 `install.ps1` / `uninstall.ps1`；
-  已有管理员权限时直接执行，没有就告诉你脚本在哪。
+- **启动方式**：手动 / 随机 DSH / 登录脚本 / Windows 服务，后两种可在面板里一键切换，
+  每个服务和 Caddy 本身都可以单独选。
+- **注册 Windows 服务**：安装时用系统自带的 `csc.exe` 编译一个几十行的服务宿主
+  （`assets/ServiceHost.cs`），不需要第三方二进制；注册时弹一次 UAC，成功后进
+  `services.msc`，开机即启、不依赖登录。
 - **对 agent 友好**：五个工具覆盖同样能力，直接说「把 /docs 反代到 8091 并加个
   密码」就能落地。
+
+## 两种自启机制
+
+| | 登录脚本 | Windows 服务 |
+|---|---|---|
+| 何时启动 | 用户**登录后** | **开机即启**，不需要登录 |
+| 注册权限 | 不需要管理员 | 需要管理员（面板会弹 UAC） |
+| 在哪儿看 | `HKCU\…\Run\DSHServiceManage` → `autostart\start-all.vbs` | `services.msc` 里的 `DSH-ServiceManage-caddy`、`DSH-ServiceManage-<id>` |
+| 运行身份 | 当前用户 | LocalSystem |
+| 谁负责启动 | 生成的 `start-all.cmd` | 自带服务宿主 `ServiceHost.exe` |
+| 互斥关系 | 已被服务接管的服务/ Caddy 不会再写进登录脚本 | 同左 |
+
+面板里每个服务行有一个下拉框（手动 / 登录脚本 / Windows 服务），设置页有
+「Caddy 自启方式」的同款下拉框。切换时会先停掉当前进程，再由另一种方式接管，
+然后重新生成登录脚本——两个机制不会同时启动同一个东西。
+
+> Windows 不允许 `cmd.exe /c xxx.cmd` 直接当服务（SCM 握手超时，报 1053），
+> 所以插件自带一个最小的 C# 服务宿主：它完成 SCM 握手、拉起 launcher、把输出
+> 写到 `launcher.service.log`，停止时用 `taskkill /T` 杀掉整棵子进程树。
 
 ## 面板
 
@@ -121,7 +141,8 @@ service_status  {}
   caddy/custom/<id>.caddy    手写片段
   logs/<service>.log         服务输出
   autostart/                 登录自启脚本（start-all.cmd / .vbs / services/*.cmd）
-  windows-service/<id>/      Windows 服务安装脚本
+  windows-service/ServiceHost.exe  自带服务宿主（首次注册时用 csc 编译）
+  windows-service/<id>/      launcher.cmd + install.ps1 + uninstall.ps1 + 服务日志
 ```
 
 ## 开发

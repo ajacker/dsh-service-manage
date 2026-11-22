@@ -17,6 +17,7 @@
     "index.js",
     "client.js",
     "lib",
+    "assets",
     "locale/*.json",
     "docs",
     "icon.svg",

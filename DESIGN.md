@@ -162,11 +162,23 @@ handle @svc_image {
 |---|---|---|
 | 随 DSH | 插件激活时 `startAuto('dsh')` | 否 |
 | 登录自启 | `HKCU\…\Run` → `wscript start-all.vbs` → `start-all.cmd` | 否 |
-| Windows 服务 | `New-Service`（`cmd.exe /c launcher.cmd`） | 是 |
+| Windows 服务 | `New-Service` → 自带 `ServiceHost.exe --name <n> --launcher <cmd>` | 是（面板弹 UAC） |
 
-Windows 服务注册无权限时不报“失败”了事：生成
-`windows-service/<id>/{launcher.cmd,install.ps1,uninstall.ps1}`，并把
-`powershell -File install.ps1` 原样返回给面板和工具。
+**为什么不是 `cmd.exe /c launcher.cmd`**：服务二进制必须自己跟 SCM 握手，
+`cmd.exe` 不会，`Start-Service` 直接报 1053（超时）。所以仓库里带一个几十行的
+`assets/ServiceHost.cs`，注册时用系统自带的 `csc.exe` 编译到
+`windows-service/ServiceHost.exe`；它完成握手、拉起 launcher、把输出写进
+`launcher.service.log`、停止时 `taskkill /T` 杀掉整棵进程树。这样不引入任何
+第三方二进制，也不用装 nssm/winsw。
+
+**两种机制互斥**：生成 `start-all.cmd` 前先 `sc query` 每个条目，已被服务接管
+的（包括 Caddy）不再写进登录脚本。面板的切换动作 = 停当前进程 → 注册/删除服务
+→ 重新生成登录脚本，所以不会出现两套同时启动。
+
+**注册脚本**：安装时写 `windows-service/<id>/{launcher.cmd,install.ps1,uninstall.ps1}`。
+`.ps1` 一律带 UTF-8 BOM——Windows PowerShell 5.1 会把无 BOM 的 .ps1 当 ANSI 读，
+中文描述会直接把字符串截断成语法错误（这就是第一次点“注册”报的那条）。
+
 
 ## 7. HTTP API（同源）
 
