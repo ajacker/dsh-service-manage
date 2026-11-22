@@ -54,10 +54,14 @@ script, so the two never start the same thing twice. The panel covers itself
 with a busy veil while such a switch runs (after 200 ms, so quick actions do not
 flash), which disables the selectors and drops repeat clicks instead of letting
 a second switch race the first. The settings page also opens the data directory,
-the plugin directory, or the Caddyfile's folder in Explorer: an already open
-window is reused and raised (borrowing the foreground thread, since Windows
-refuses a background process that privilege), and if that is refused too the
-window is flashed in the taskbar instead of silently staying behind.
+the plugin directory, or the Caddyfile's folder in Explorer: the folder is
+opened through the shell (`Shell.Application.Explore`) rather than
+`explorer.exe <dir>`, because a window spawned that way from a background
+process never becomes visible — it keeps style `0x04CF0000`, shows up in no
+Alt-Tab list, and still accepts `SetForegroundWindow`, which is how a "success"
+could leave the screen untouched. Only a visible window is reused or raised
+(borrowing the foreground thread, since Windows refuses that to a background
+process), and leftover invisible windows for the same folder are closed.
 
 > Windows rejects `cmd.exe /c something.cmd` as a service binary — the process
 > never talks to the SCM, so start fails with error 1053. The bundled host does
