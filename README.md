@@ -1,5 +1,7 @@
 # dsh-service-manage
 
+English | [中文](README.zh.md)
+
 A local service manager for DeepSeek Harness: one panel and one set of agent
 tools to start/stop local processes, put them behind Caddy, and keep them alive.
 
@@ -50,9 +52,15 @@ config.
 | `caddyExe` | `caddy` | executable to run |
 | `caddyfile` | `<dataDir>/caddy/Caddyfile` | main Caddyfile |
 | `proxyListen` | `:8080` | reverse-proxy listen address |
-| `adminEndpoint` | `127.0.0.1:2019` | Caddy admin API |
+| `adminEndpoint` | `localhost:2019` | Caddy admin API (`admin localhost:2019` answers that Host only) |
+| `autoStartCaddy` | `false` | start Caddy when DSH starts |
 
 Everything else is edited in the panel and stored in `state.json`.
+
+## Panel
+
+The sidebar entry **服务** opens five tabs: overview, services, reverse-proxy
+routes, an advanced page (whole Caddyfile + custom snippets), and settings.
 
 ## Two Caddy modes
 
@@ -79,10 +87,25 @@ service_status  {}
 - Windows-first: process control uses `taskkill`/`netstat`, autostart uses the
   registry, and the Windows-service plan uses PowerShell. Other platforms get
   the Caddy half only.
-- Processes started by the plugin die with it; use `autoStart: "dsh"` or a
-  Windows service when they must outlive DSH.
+- Processes started by the plugin die with it; login-launched ones are detached
+  and survive. Use `autoStart: "boot"` or a Windows service when they must
+  outlive DSH.
 - The panel API answers loopback requests only.
 - One proxy listener per installation.
+- The panel UI is currently Chinese.
+
+## Data directory
+
+```
+<dataDir>/
+  state.json                  services, routes, snippets, settings
+  caddy/Caddyfile             main file (managed mode)
+  caddy/routes/_managed.caddy rendered routes
+  caddy/custom/<id>.caddy     hand-written snippets
+  logs/<service>.log          process output
+  autostart/                  login launcher (start-all.cmd/.vbs, services/*.cmd)
+  windows-service/<id>/       generated install/uninstall scripts
+```
 
 ## Development
 
