@@ -53,7 +53,10 @@ process, hands the entry to the other mechanism, and regenerates the login
 script, so the two never start the same thing twice. The panel covers itself
 with a busy veil while such a switch runs (after 200 ms, so quick actions do not
 flash), which disables the selectors and drops repeat clicks instead of letting
-a second switch race the first. The settings page also opens the data directory,
+a second switch race the first. Restarting waits for the old process to release
+the port before the new one starts, and the panel reports the real outcome — a
+restart that could not bring the service back shows the reason instead of
+claiming success. The settings page also opens the data directory,
 the plugin directory, or the Caddyfile's folder in Explorer: the folder is
 opened through the shell (`Shell.Application.Explore`) rather than
 `explorer.exe <dir>`, because a window spawned that way from a background

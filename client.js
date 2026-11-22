@@ -658,6 +658,26 @@ window.__ModuleLoader__.load({
       }
 
       /* ── 服务 ── */
+      /**
+       * Run start/stop/restart and report what really happened. Reporting only
+       * "the request finished" hides the case this was written for: a restart
+       * that stops the process and then fails to bring it back.
+       * @param {object} service - one service row.
+       * @param {string} action - start, stop or restart.
+       * @returns {Promise<void>} resolves when the row is refreshed.
+       */
+      const runService = async (service, action) => {
+        const data = await act('/service/action', { id: service.id, action })
+        if (!data) return
+        const result = data.result ?? {}
+        if (result.ok) {
+          const wording = action === 'start' ? '已启动' : action === 'stop' ? '已停止' : '已重启'
+          notify(`${wording} ${service.name}`)
+          return
+        }
+        setError(`${service.name} 操作未完成：${result.output || '未知原因'}`)
+      }
+
       function renderServices() {
         return h('div', { className: 'sm-stack' },
           h('div', { className: 'sm-toolbar' },
@@ -697,11 +717,11 @@ window.__ModuleLoader__.load({
                         ),
                     service.manage === 'external' || service.running
                       ? null
-                      : h(Btn, { kind: 'primary', onClick: () => act('/service/action', { id: service.id, action: 'start' }, `已启动 ${service.name}`) }, '启动'),
+                      : h(Btn, { kind: 'primary', onClick: () => { void runService(service, 'start') } }, '启动'),
                     service.running
-                      ? h(Btn, { onClick: () => act('/service/action', { id: service.id, action: 'stop' }, `已停止 ${service.name}`) }, '停止')
+                      ? h(Btn, { onClick: () => { void runService(service, 'stop') } }, '停止')
                       : null,
-                    h(Btn, { onClick: () => act('/service/action', { id: service.id, action: 'restart' }, `已重启 ${service.name}`) }, '重启'),
+                    h(Btn, { onClick: () => { void runService(service, 'restart') } }, '重启'),
                     h(Btn, { onClick: () => setLogsFor(service) }, '日志'),
                     h(Btn, { onClick: () => setEditor({ type: 'service', value: toServiceDraft(service) }) }, '编辑'),
                     h(Btn, { kind: 'danger', onClick: () => {
