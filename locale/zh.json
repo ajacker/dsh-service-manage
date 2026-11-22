@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "本地服务管理",
+    "description": "统一启停本地服务、配置 Caddy 反向代理、直接编辑 Caddyfile，并把服务注册为开机自启或随 DSH 启动。",
+    "detail": "docs/DETAIL.md"
+  }
+}

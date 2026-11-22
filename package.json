@@ -1,0 +1,63 @@
+{
+  "name": "dsh-service-manage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local service manager and Caddy reverse-proxy panel for DeepSeek Harness: start/stop local processes, edit routes, register Windows services, and let the agent do the same through tools.",
+  "type": "module",
+  "main": "index.js",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "caddy",
+    "reverse-proxy",
+    "service-manager",
+    "windows-service",
+    "self-hosting"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "check": "node --check index.js && node --check client.js && node --check lib/api.js && node --check lib/caddy.js && node --check lib/services.js && node --check lib/store.js && node --check lib/tools.js && node --check lib/util.js && node --check lib/windows.js"
+  },
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "devDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

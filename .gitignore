@@ -1,0 +1,12 @@
+node_modules/
+*.log
+*.bak
+*.tmp
+state.json
+logs/
+caddy/
+autostart/
+windows-service/
+.DS_Store
+.smoke/
+

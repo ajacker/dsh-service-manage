@@ -1,0 +1,12 @@
+# dsh-service-manage — 本地服务管理 + Caddy 反代面板。
+# 作为 bundle 合入 profile 时插入本插件行。
+# 可用的 config 字段（都可省略）：
+#   dataDir     状态、日志、Caddy 配置所在的目录（默认 <DSH_HOME>/service-manage）
+#   caddyExe    caddy 可执行文件（默认 PATH 里的 caddy）
+#   caddyfile   主 Caddyfile 路径（默认 <dataDir>/caddy/Caddyfile）
+#   proxyListen 反代监听地址（默认 :8080）
+#   adminEndpoint Caddy 管理 API 地址（默认 127.0.0.1:2019）
+- insert:
+    - id: service-manage
+      name: dsh-service-manage
+      config: {}

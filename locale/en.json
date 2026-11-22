@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Service manager",
+    "description": "Start and stop local services, configure Caddy reverse-proxy routes, edit the Caddyfile directly, and register a service to start at login or with DSH.",
+    "detail": "docs/DETAIL.md"
+  }
+}
