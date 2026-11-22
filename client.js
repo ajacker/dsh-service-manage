@@ -662,11 +662,15 @@ window.__ModuleLoader__.load({
        * Run start/stop/restart and report what really happened. Reporting only
        * "the request finished" hides the case this was written for: a restart
        * that stops the process and then fails to bring it back.
+       *
+       * Declared with `function` on purpose: this file returns the panel tree
+       * before reaching this point, so a `const` arrow would sit in the
+       * temporal dead zone and every button would throw on click.
        * @param {object} service - one service row.
        * @param {string} action - start, stop or restart.
        * @returns {Promise<void>} resolves when the row is refreshed.
        */
-      const runService = async (service, action) => {
+      async function runService(service, action) {
         const data = await act('/service/action', { id: service.id, action })
         if (!data) return
         const result = data.result ?? {}
