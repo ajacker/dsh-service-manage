@@ -17,7 +17,9 @@ browser ── DSH Web GUI ──► /service-manage (API)
 ## What it does
 
 - **Services**: name, description, working directory, launch command, port,
-  health path, extra environment; start, stop, restart, read logs.
+  health path, extra environment; start, stop, restart, read logs. Start and
+  restart return only once the port accepts connections (up to 25s), so a slow
+  boot never looks like a failure.
 - **Reverse proxy**: Caddy is the entry point. Add routes (path/host → upstream,
   optional prefix stripping, Basic auth, CORS, redirect, static files) from the
   panel, or edit the whole `Caddyfile` by hand.
@@ -52,7 +54,10 @@ script, so the two never start the same thing twice. The panel covers itself
 with a busy veil while such a switch runs (after 200 ms, so quick actions do not
 flash), which disables the selectors and drops repeat clicks instead of letting
 a second switch race the first. The settings page also opens the data directory,
-the plugin directory, or the Caddyfile's folder in Explorer.
+the plugin directory, or the Caddyfile's folder in Explorer: an already open
+window is reused and raised (borrowing the foreground thread, since Windows
+refuses a background process that privilege), and if that is refused too the
+window is flashed in the taskbar instead of silently staying behind.
 
 > Windows rejects `cmd.exe /c something.cmd` as a service binary — the process
 > never talks to the SCM, so start fails with error 1053. The bundled host does

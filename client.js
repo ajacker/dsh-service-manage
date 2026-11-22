@@ -899,7 +899,11 @@ window.__ModuleLoader__.load({
       })
       const [busy, setBusy] = useState(false)
       const [switching, setSwitching] = useState(false)
-      const openDir = target => act('/open', { target }, '已在资源管理器中打开')
+      const openDir = async target => {
+        const data = await act('/open', { target })
+        if (!data) return
+        notify(data.focused ? `已打开 ${data.opened}` : `已打开 ${data.opened}（窗口在任务栏闪烁）`)
+      }
       const save = async () => {
         setBusy(true)
         try {
