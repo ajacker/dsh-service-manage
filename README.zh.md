@@ -81,8 +81,11 @@ service_status  {}
 ## 开发
 
 ```bash
+npm install            # 仅测试用：react + react-dom
 node --check index.js && node --check client.js
-node test/render.test.mjs
+node test/render.test.mjs      # Caddyfile 渲染、登记表归一化、日志流回归
+node test/client-render.mjs    # 用固定数据渲染面板每个页签
+node test/smoke-caddy.mjs      # 生成一份贴近真实的 Caddyfile，再用 caddy validate 校验
 ```
 
 MIT 许可。

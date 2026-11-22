@@ -87,8 +87,11 @@ service_status  {}
 ## Development
 
 ```bash
+npm install            # dev-only: react + react-dom for the render test
 node --check index.js && node --check client.js
-node test/render.test.mjs
+node test/render.test.mjs      # Caddyfile rendering, store normalization, log-pipe regressions
+node test/client-render.mjs    # renders every panel tab against a fixture
+node test/smoke-caddy.mjs      # prints a realistic Caddyfile; validate with `caddy validate --config .smoke/caddy/Caddyfile`
 ```
 
 MIT licensed.

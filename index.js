@@ -59,7 +59,9 @@ export async function apply(ctx, config = {}) {
     text: PROMPT,
   }), 'service-manage: prompt section')
 
+  let bootTimer
   ctx.effect(() => () => {
+    if (bootTimer) clearTimeout(bootTimer)
     void supervisor.shutdown().catch(() => {})
     void caddy.dispose().catch(() => {})
   }, 'service-manage: process cleanup')
@@ -67,7 +69,9 @@ export async function apply(ctx, config = {}) {
   // Startup work must not block or fail activation: a missing Caddy or a busy
   // port is reported by the panel, not raised into the plugin loader. Caddy is
   // started only when the setting is on, so installing the plugin can never
-  // take over a port another proxy already serves.
+  // take over a port another proxy already serves. Services marked "boot" start
+  // after a short delay, and an already listening port counts as started, so a
+  // login launcher that is binding the same port wins instead of colliding.
   void (async () => {
     try {
       if (store.settings.autoStartCaddy === true) {
@@ -78,9 +82,14 @@ export async function apply(ctx, config = {}) {
       /* reported by the panel */
     }
     try {
-      await supervisor.startAuto('dsh')
+      await supervisor.startAuto(['dsh'])
     } catch {
       /* reported by the panel */
     }
+    const timer = setTimeout(() => {
+      void supervisor.startAuto(['boot']).catch(() => {})
+    }, 6000)
+    bootTimer = timer
+    timer.unref?.()
   })()
 }
